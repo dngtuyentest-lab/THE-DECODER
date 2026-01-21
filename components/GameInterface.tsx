@@ -1,9 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Question, Student, GameConfig, GameType } from '../types';
 import { shuffleString } from '../utils';
-import { ICONS } from '../constants';
-import { Trophy, HelpCircle, MessageSquare } from 'lucide-react';
+import { HelpCircle, MessageSquare, ChevronLeft, RotateCcw } from 'lucide-react';
 
 interface GameInterfaceProps {
   currentStudent: Student;
@@ -20,121 +19,166 @@ const GameInterface: React.FC<GameInterfaceProps> = ({
   onAnswer,
   onGuessMainKeyword 
 }) => {
-  const [userAnswer, setUserAnswer] = useState<string[]>(new Array(currentQuestion.answer.length).fill(''));
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const scrambled = useRef(shuffleString(currentQuestion.answer));
+  const [selectedLetters, setSelectedLetters] = useState<{char: string, originalIdx: number}[]>([]);
+  const [scrambledPool, setScrambledPool] = useState<{char: string, originalIdx: number, isUsed: boolean}[]>([]);
 
+  // Initialize the pool when the question changes
   useEffect(() => {
-    setUserAnswer(new Array(currentQuestion.answer.length).fill(''));
-    scrambled.current = shuffleString(currentQuestion.answer);
-    setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    const chars = shuffleString(currentQuestion.answer).split('');
+    setScrambledPool(chars.map((char, idx) => ({ char, originalIdx: idx, isUsed: false })));
+    setSelectedLetters([]);
   }, [currentQuestion]);
 
-  const handleInputChange = (index: number, value: string) => {
-    const char = value.slice(-1).toUpperCase();
-    if (!char.match(/[A-Z0-9]/) && char !== '') return;
+  // Handle clicking a tile in the pool
+  const handlePoolClick = (poolIdx: number) => {
+    const item = scrambledPool[poolIdx];
+    if (item.isUsed) return;
 
-    const newAnswer = [...userAnswer];
-    newAnswer[index] = char;
-    setUserAnswer(newAnswer);
-
-    if (char && index < currentQuestion.answer.length - 1) {
-      inputRefs.current[index + 1]?.focus();
-    }
+    const newPool = [...scrambledPool];
+    newPool[poolIdx].isUsed = true;
+    setScrambledPool(newPool);
+    setSelectedLetters([...selectedLetters, { char: item.char, originalIdx: poolIdx }]);
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !userAnswer[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-    if (e.key === 'Enter') {
-      checkAnswer();
-    }
+  // Handle clicking a letter in the answer slots (to remove it)
+  const handleRemoveLetter = (answerIdx: number) => {
+    const itemToRemove = selectedLetters[answerIdx];
+    const newPool = [...scrambledPool];
+    newPool[itemToRemove.originalIdx].isUsed = false;
+    
+    setScrambledPool(newPool);
+    setSelectedLetters(selectedLetters.filter((_, i) => i !== answerIdx));
+  };
+
+  const handleReset = () => {
+    setScrambledPool(scrambledPool.map(item => ({ ...item, isUsed: false })));
+    setSelectedLetters([]);
   };
 
   const checkAnswer = () => {
-    const isCorrect = userAnswer.join('') === currentQuestion.answer;
-    onAnswer(isCorrect);
+    const finalAnswer = selectedLetters.map(l => l.char).join('');
+    onAnswer(finalAnswer === currentQuestion.answer.toUpperCase());
   };
 
+  // Keyboard support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toUpperCase();
+      if (key === 'BACKSPACE') {
+        if (selectedLetters.length > 0) handleRemoveLetter(selectedLetters.length - 1);
+      } else if (key === 'ENTER') {
+        if (selectedLetters.length === currentQuestion.answer.length) checkAnswer();
+      } else if (key.length === 1 && key.match(/[A-Z0-9]/)) {
+        const availableIdx = scrambledPool.findIndex(item => item.char === key && !item.isUsed);
+        if (availableIdx !== -1) handlePoolClick(availableIdx);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedLetters, scrambledPool, currentQuestion]);
+
   return (
-    <div className="max-w-4xl mx-auto p-6 animate-fadeIn">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
-        {/* Header Bar */}
-        <div className="bg-blue-600 px-8 py-4 flex justify-between items-center text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center font-bold">
+    <div className="max-w-4xl mx-auto p-4 animate-fadeIn">
+      <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 overflow-hidden">
+        {/* Profile Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 flex justify-between items-center text-white">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-2xl shadow-inner border border-white/30">
               {currentStudent.name[0].toUpperCase()}
             </div>
             <div>
-              <div className="text-xs opacity-75 uppercase font-bold tracking-widest">Đang trả lời</div>
-              <div className="font-bold text-lg">{currentStudent.name}</div>
+              <div className="text-xs text-blue-100 uppercase font-black tracking-[0.2em]">Người Giải Mã</div>
+              <div className="font-extrabold text-2xl drop-shadow-sm">{currentStudent.name}</div>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-blue-700 px-4 py-2 rounded-xl">
-             <Trophy className="w-5 h-5 text-yellow-400" />
-             <span className="font-bold tracking-tighter">THE DECODER</span>
+          <div className="hidden sm:flex items-center gap-3 bg-black/20 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/10">
+             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+             <span className="font-bold text-sm tracking-widest uppercase">Live Session</span>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="p-10 text-center space-y-12">
-          {/* Question Display */}
+        <div className="p-8 sm:p-12 text-center space-y-12">
+          {/* Question Section */}
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 text-blue-600 font-bold uppercase text-sm">
-              <HelpCircle className="w-4 h-4" /> Câu hỏi / Gợi ý
+            <div className="inline-flex items-center gap-2 text-indigo-500 font-bold uppercase text-xs tracking-widest">
+              <HelpCircle className="w-4 h-4" /> Gợi ý từ hệ thống
             </div>
-            <h2 className="text-3xl font-extrabold text-slate-800 leading-tight">
-              {currentQuestion.question || "Hãy giải mã từ khóa sau!"}
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-800 leading-tight">
+              {currentQuestion.question || "Sắp xếp lại các chữ cái để tạo thành từ đúng!"}
             </h2>
           </div>
 
-          {/* Scrambled Word */}
-          <div className="py-6 px-8 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 inline-block">
-             <div className="text-slate-400 text-xs font-bold uppercase mb-3 tracking-widest">Từ bị xáo trộn</div>
-             <div className="flex justify-center gap-3">
-               {scrambled.current.split('').map((char, i) => (
-                 <div key={i} className="w-14 h-14 bg-white border-2 border-slate-200 rounded-xl flex items-center justify-center text-2xl font-black text-blue-600 shadow-sm rotate-2 hover:rotate-0 transition-transform">
-                   {char}
-                 </div>
+          {/* Answer Area (Slots) */}
+          <div className="flex flex-wrap justify-center gap-3 min-h-[5rem]">
+            {Array.from({ length: currentQuestion.answer.length }).map((_, i) => {
+              const selected = selectedLetters[i];
+              return (
+                <button
+                  key={`slot-${i}`}
+                  onClick={() => selected && handleRemoveLetter(i)}
+                  className={`w-14 h-16 sm:w-16 sm:h-20 rounded-2xl flex items-center justify-center text-3xl font-black transition-all transform hover:scale-105 active:scale-95 ${
+                    selected 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-b-4 border-blue-800' 
+                    : 'bg-slate-50 border-2 border-dashed border-slate-200 text-slate-200'
+                  }`}
+                >
+                  {selected?.char || ""}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Pool of Letters */}
+          <div className="bg-slate-50/50 p-8 rounded-[2rem] border-2 border-slate-100">
+             <div className="flex flex-wrap justify-center gap-3">
+               {scrambledPool.map((item, i) => (
+                 <button
+                   key={`pool-${i}`}
+                   disabled={item.isUsed}
+                   onClick={() => handlePoolClick(i)}
+                   className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-2xl font-black transition-all shadow-sm ${
+                     item.isUsed 
+                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-30 scale-90' 
+                     : 'bg-white border-2 border-slate-200 text-slate-800 hover:border-blue-500 hover:text-blue-600 hover:-translate-y-1 active:translate-y-0'
+                   }`}
+                 >
+                   {item.char}
+                 </button>
                ))}
              </div>
           </div>
 
-          {/* Answer Input Area */}
-          <div className="space-y-6">
-            <div className="flex justify-center flex-wrap gap-2">
-              {userAnswer.map((char, i) => (
-                <input
-                  key={i}
-                  ref={el => inputRefs.current[i] = el}
-                  type="text"
-                  maxLength={1}
-                  value={char}
-                  onChange={(e) => handleInputChange(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(i, e)}
-                  className="w-12 h-16 text-3xl font-black text-center border-b-4 border-slate-200 focus:border-blue-500 bg-transparent outline-none transition-all placeholder-slate-200"
-                  placeholder="_"
-                />
-              ))}
-            </div>
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-2 px-6 py-3 text-slate-400 hover:text-slate-600 font-bold transition-all"
+            >
+              <RotateCcw className="w-5 h-5" /> Xóa hết
+            </button>
             <button
               onClick={checkAnswer}
-              className="mt-4 px-12 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-black text-lg transition-all shadow-xl active:scale-95"
+              disabled={selectedLetters.length !== currentQuestion.answer.length}
+              className={`px-12 py-5 rounded-full font-black text-xl transition-all shadow-2xl active:scale-95 uppercase tracking-widest ${
+                selectedLetters.length === currentQuestion.answer.length
+                ? 'bg-green-600 hover:bg-green-700 text-white hover:shadow-green-200'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
             >
-              NỘP BÀI ✅
+              Xác nhận 🚀
             </button>
           </div>
 
-          {/* Bonus Option */}
+          {/* Theme Keyword Hint */}
           {config.type === GameType.THEMED && (
             <div className="pt-8 border-t border-slate-100">
                <button
                  onClick={onGuessMainKeyword}
-                 className="flex items-center gap-3 mx-auto px-6 py-3 bg-amber-50 text-amber-700 rounded-2xl hover:bg-amber-100 transition-all font-bold group"
+                 className="group relative flex items-center gap-3 mx-auto px-8 py-4 bg-amber-50 text-amber-700 rounded-2xl hover:bg-amber-100 transition-all font-black overflow-hidden"
                >
-                 <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                 BẠN MUỐN ĐOÁN TỪ KHÓA CHỦ ĐỀ?
+                 <div className="absolute inset-0 bg-gradient-to-r from-amber-400/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                 <MessageSquare className="w-6 h-6 animate-pulse" />
+                 ĐOÁN TỪ KHÓA CHỦ ĐỀ
                </button>
             </div>
           )}

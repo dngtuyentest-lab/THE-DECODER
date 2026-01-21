@@ -10,7 +10,7 @@ import GameplaySetup from './components/GameplaySetup';
 import GameInterface from './components/GameInterface';
 import SpinWheel from './components/SpinWheel';
 import { shuffleArray } from './utils';
-import { PartyPopper, Trophy as TrophyIcon, RotateCw, Home } from 'lucide-react';
+import { PartyPopper, Trophy as TrophyIcon, Home, CheckCircle, XCircle, KeyRound, Sparkles } from 'lucide-react';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<GameStatus>(GameStatus.SETUP_CLASS);
@@ -26,11 +26,15 @@ const App: React.FC = () => {
   const [mainKeywordGuesser, setMainKeywordGuesser] = useState<Student | null>(null);
   const [winner, setWinner] = useState<{ student: Student, trophy: 'GOLD' | 'SILVER' } | null>(null);
   
+  // Interaction State
+  const [feedback, setFeedback] = useState<'CORRECT' | 'WRONG' | null>(null);
+  const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
+  const [keywordGuess, setKeywordGuess] = useState('');
+  
   // Reward Phase
   const [rewardFor, setRewardFor] = useState<'WINNER' | 'THEME' | null>(null);
   const [receivedReward, setReceivedReward] = useState<string | null>(null);
 
-  // Initialize classroom
   useEffect(() => {
     const initial: Student[] = [];
     for (let r = 0; r < ROWS; r++) {
@@ -72,67 +76,72 @@ const App: React.FC = () => {
     setStudentIndex(0);
     setQuestionIndex(0);
     setEliminatedIds(new Set());
+    setFeedback(null);
   };
 
   const handleAnswer = (isCorrect: boolean) => {
     const student = currentStudents[studentIndex];
     
-    if (!isCorrect) {
+    if (isCorrect) {
+      setFeedback('CORRECT');
+    } else {
+      setFeedback('WRONG');
       setEliminatedIds(prev => new Set(prev).add(student.id));
     }
 
-    moveToNextTurn();
+    setTimeout(() => {
+      setFeedback(null);
+      moveToNextTurn();
+    }, 1500);
   };
 
   const moveToNextTurn = () => {
     const nextIndex = studentIndex + 1;
     
-    // Check if round is over
     if (nextIndex >= currentStudents.length) {
       const remaining = currentStudents.filter(s => !eliminatedIds.has(s.id));
       
       if (remaining.length === 0) {
-        // Everyone eliminated in last round? The person who just played is winner with Silver
         const lastPlayer = currentStudents[currentStudents.length - 1];
         setWinner({ student: lastPlayer, trophy: 'SILVER' });
         setStatus(GameStatus.ENDING);
       } else if (remaining.length === 1) {
-        // 1 Survivor
         setWinner({ student: remaining[0], trophy: 'GOLD' });
         setStatus(GameStatus.ENDING);
       } else {
-        // Next Round
         setRound(prev => prev + 1);
         setCurrentStudents(shuffleArray(remaining));
         setStudentIndex(0);
         setEliminatedIds(new Set());
-        setQuestionIndex(prev => (prev + 1) % config!.questions.length);
+        setQuestionIndex(Math.floor(Math.random() * config!.questions.length));
       }
     } else {
       setStudentIndex(nextIndex);
-      setQuestionIndex(prev => (prev + 1) % config!.questions.length);
+      setQuestionIndex(Math.floor(Math.random() * config!.questions.length));
     }
   };
 
-  const handleMainKeywordGuess = () => {
-    const guess = prompt("NHẬP TỪ KHÓA CHỦ ĐỀ:");
-    if (!guess) return;
-
-    if (guess.toUpperCase() === config?.mainKeyword?.toUpperCase()) {
+  const processKeywordGuess = () => {
+    if (keywordGuess.toUpperCase() === config?.mainKeyword?.toUpperCase()) {
       const luckyStudent = currentStudents[studentIndex];
       setMainKeywordGuesser(luckyStudent);
-      alert(`CHÚC MỪNG ${luckyStudent.name}! Bạn đã đoán đúng Từ khóa chủ đề!`);
+      setIsKeywordModalOpen(false);
+      setFeedback('CORRECT');
       
-      const choice = confirm("Bạn đã có vé vào vòng trong! Bạn muốn TIẾP TỤC chơi hay DỪNG LẠI và nhận thưởng ngay?");
-      if (!choice) {
-        setWinner({ student: luckyStudent, trophy: 'GOLD' });
-        setStatus(GameStatus.ENDING);
-      } else {
-        // Student automatically passes current round
-        moveToNextTurn();
-      }
+      setTimeout(() => {
+        setFeedback(null);
+        const choice = confirm(`CHÚC MỪNG ${luckyStudent.name}! Bạn có muốn nhận thưởng & DỪNG LẠI (OK) hay TIẾP TỤC chơi (Cancel)?`);
+        if (choice) {
+          setWinner({ student: luckyStudent, trophy: 'GOLD' });
+          setStatus(GameStatus.ENDING);
+        } else {
+          moveToNextTurn();
+        }
+      }, 1000);
     } else {
-      alert("Rất tiếc, câu trả lời chưa chính xác!");
+      alert("Sai rồi! Hãy tiếp tục giải mã các từ khóa khác.");
+      setIsKeywordModalOpen(false);
+      setKeywordGuess('');
     }
   };
 
@@ -142,9 +151,9 @@ const App: React.FC = () => {
     setMainKeywordGuesser(null);
     setRewardFor(null);
     setReceivedReward(null);
+    setFeedback(null);
   };
 
-  // Rendering logic
   const renderContent = () => {
     switch (status) {
       case GameStatus.SETUP_CLASS:
@@ -164,69 +173,135 @@ const App: React.FC = () => {
         );
       case GameStatus.PLAYING:
         return (
-          <div className="pt-10">
-            <div className="max-w-4xl mx-auto px-6 mb-4 flex justify-between items-end">
-               <div>
-                  <span className="text-blue-600 font-black text-4xl mr-3">VÒNG {round}</span>
-                  <span className="text-slate-400 font-bold">HS {studentIndex + 1}/{currentStudents.length}</span>
+          <div className="pt-6 relative min-h-[80vh]">
+            {/* Round Stats */}
+            <div className="max-w-4xl mx-auto px-6 mb-6 flex justify-between items-center">
+               <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                  <span className="text-blue-600 font-black text-3xl">VÒNG {round}</span>
+                  <div className="h-8 w-[1px] bg-slate-200" />
+                  <span className="text-slate-400 font-bold uppercase text-xs tracking-widest">
+                    Học sinh {studentIndex + 1} / {currentStudents.length}
+                  </span>
                </div>
-               <div className="flex gap-2">
+               <div className="flex gap-1.5">
                  {currentStudents.map((s, idx) => (
                    <div 
                     key={s.id} 
-                    className={`w-3 h-3 rounded-full ${
-                      idx === studentIndex ? 'bg-blue-600 scale-125' : 
-                      eliminatedIds.has(s.id) ? 'bg-red-200' : 'bg-slate-200'
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${
+                      idx === studentIndex ? 'bg-blue-600 scale-150 ring-4 ring-blue-100' : 
+                      eliminatedIds.has(s.id) ? 'bg-red-300 opacity-50' : 'bg-slate-200'
                     }`} 
                    />
                  ))}
                </div>
             </div>
+
             <GameInterface 
               currentStudent={currentStudents[studentIndex]}
               currentQuestion={config!.questions[questionIndex]}
               config={config!}
               onAnswer={handleAnswer}
-              onGuessMainKeyword={handleMainKeywordGuess}
+              onGuessMainKeyword={() => setIsKeywordModalOpen(true)}
             />
+
+            {/* Feedback Overlay */}
+            {feedback && (
+              <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center animate-fadeIn backdrop-blur-md ${
+                feedback === 'CORRECT' ? 'bg-green-600/90' : 'bg-red-600/90'
+              }`}>
+                <div className="bg-white p-12 rounded-[3rem] shadow-2xl scale-125 animate-scaleIn flex flex-col items-center gap-6">
+                  {feedback === 'CORRECT' ? (
+                    <>
+                      <CheckCircle className="w-32 h-32 text-green-500 animate-bounce" />
+                      <div className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Chính Xác!</div>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-32 h-32 text-red-500 animate-shake" />
+                      <div className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Bị Loại!</div>
+                    </>
+                  )}
+                  <div className="text-xl font-bold text-slate-400">{currentStudents[studentIndex].name}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Keyword Decoder Modal */}
+            {isKeywordModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm">
+                <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl animate-scaleIn border-t-8 border-amber-400">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600">
+                      <KeyRound className="w-7 h-7" />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-800 uppercase">Giải Mã Chủ Đề</h2>
+                  </div>
+                  <p className="text-slate-500 mb-8 font-medium">Nhập từ khóa chủ đề bạn đã suy luận được:</p>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={keywordGuess}
+                    onChange={(e) => setKeywordGuess(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === 'Enter' && processKeywordGuess()}
+                    className="w-full p-6 bg-slate-50 border-2 border-amber-200 rounded-2xl text-3xl font-black text-center text-amber-700 focus:ring-4 focus:ring-amber-100 outline-none uppercase placeholder-slate-200 mb-8 tracking-widest"
+                    placeholder="..."
+                  />
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => { setIsKeywordModalOpen(false); setKeywordGuess(''); }}
+                      className="flex-1 py-4 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl"
+                    >
+                      Bỏ qua
+                    </button>
+                    <button 
+                      onClick={processKeywordGuess}
+                      className="flex-1 py-4 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl shadow-lg shadow-amber-100"
+                    >
+                      XÁC NHẬN
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       case GameStatus.ENDING:
         return (
           <div className="max-w-4xl mx-auto p-10 text-center animate-fadeIn">
-            <div className="mb-12">
+            <div className="mb-12 relative">
+               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-12">
+                  <Sparkles className="w-24 h-24 text-yellow-400 animate-pulse" />
+               </div>
                <PartyPopper className="w-20 h-20 text-blue-500 mx-auto mb-6 animate-bounce" />
-               <h1 className="text-5xl font-black text-slate-800 mb-2">KẾT THÚC TRÒ CHƠI</h1>
-               <p className="text-slate-500 text-xl">Những nhà giải mã tài ba đã lộ diện!</p>
+               <h1 className="text-6xl font-black text-slate-800 mb-2 tracking-tighter">TỔNG KẾT</h1>
+               <p className="text-slate-500 text-xl font-medium">Chiến dịch giải mã đã hoàn tất xuất sắc!</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8 mb-12">
-               {/* Winner Card */}
-               <div className="bg-white p-8 rounded-3xl shadow-xl border-t-8 border-yellow-400">
-                  <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <TrophyIcon className={`w-10 h-10 ${winner?.trophy === 'GOLD' ? 'text-yellow-600' : 'text-slate-400'}`} />
+               <div className="group bg-white p-8 rounded-[3rem] shadow-xl border-t-[12px] border-yellow-400 transition-all hover:-translate-y-2">
+                  <div className="bg-yellow-100 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-3 group-hover:rotate-0 transition-transform">
+                    <TrophyIcon className={`w-12 h-12 ${winner?.trophy === 'GOLD' ? 'text-yellow-600' : 'text-slate-400'}`} />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Quán quân</h3>
-                  <div className="text-3xl font-black text-slate-800 mb-4">{winner?.student.name}</div>
+                  <h3 className="text-xs font-black text-slate-300 uppercase tracking-[0.3em] mb-2">QUÁN QUÂN</h3>
+                  <div className="text-4xl font-black text-slate-800 mb-8 tracking-tight">{winner?.student.name}</div>
                   <button 
                     onClick={() => { setRewardFor('WINNER'); setReceivedReward(null); }}
-                    className="w-full py-3 bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl font-bold transition-all"
+                    className="w-full py-5 bg-gradient-to-br from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white rounded-2xl font-black text-lg transition-all shadow-xl hover:shadow-yellow-200"
                   >
                     NHẬN THƯỞNG 🎁
                   </button>
                </div>
 
-               {/* Theme Guesser Card */}
                {mainKeywordGuesser && (
-                 <div className="bg-white p-8 rounded-3xl shadow-xl border-t-8 border-indigo-400">
-                    <div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <PartyPopper className="w-10 h-10 text-indigo-600" />
+                 <div className="group bg-white p-8 rounded-[3rem] shadow-xl border-t-[12px] border-indigo-500 transition-all hover:-translate-y-2">
+                    <div className="bg-indigo-100 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 -rotate-3 group-hover:rotate-0 transition-transform">
+                      <KeyRound className="w-12 h-12 text-indigo-600" />
                     </div>
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Giải Mã Chủ Đề</h3>
-                    <div className="text-3xl font-black text-slate-800 mb-4">{mainKeywordGuesser.name}</div>
+                    <h3 className="text-xs font-black text-slate-300 uppercase tracking-[0.3em] mb-2">BẬC THẦY CHỦ ĐỀ</h3>
+                    <div className="text-4xl font-black text-slate-800 mb-8 tracking-tight">{mainKeywordGuesser.name}</div>
                     <button 
                       onClick={() => { setRewardFor('THEME'); setReceivedReward(null); }}
-                      className="w-full py-3 bg-indigo-400 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all"
+                      className="w-full py-5 bg-gradient-to-br from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white rounded-2xl font-black text-lg transition-all shadow-xl hover:shadow-indigo-200"
                     >
                       NHẬN THƯỞNG 🎁
                     </button>
@@ -234,12 +309,11 @@ const App: React.FC = () => {
                )}
             </div>
 
-            {/* Reward Modal */}
             {rewardFor && (
-              <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                <div className="bg-white rounded-3xl p-10 max-w-2xl w-full shadow-2xl animate-scaleIn">
-                  <h2 className="text-3xl font-black text-center mb-8">
-                    PHẦN THƯỞNG CHO {rewardFor === 'WINNER' ? winner?.student.name : mainKeywordGuesser?.name}
+              <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+                <div className="bg-white rounded-[3rem] p-10 max-w-2xl w-full shadow-2xl animate-scaleIn">
+                  <h2 className="text-4xl font-black text-center mb-10 text-slate-800 tracking-tighter uppercase">
+                    VÒNG QUAY MAY MẮN
                   </h2>
                   
                   {!receivedReward ? (
@@ -248,17 +322,19 @@ const App: React.FC = () => {
                       onFinish={(item) => setReceivedReward(item)} 
                     />
                   ) : (
-                    <div className="text-center space-y-8 animate-fadeIn">
-                       <div className="text-6xl mb-4">✨ 🎁 ✨</div>
-                       <div className="text-2xl text-slate-500">Phần thưởng của bạn là:</div>
-                       <div className="text-6xl font-black text-blue-600 bg-blue-50 py-10 rounded-3xl border-4 border-blue-200 uppercase tracking-widest">
-                          {receivedReward}
+                    <div className="text-center space-y-10 animate-fadeIn py-10">
+                       <div className="text-7xl mb-4 animate-bounce">🎊</div>
+                       <div>
+                          <div className="text-xl text-slate-400 font-bold uppercase tracking-widest mb-2">Chúc mừng bạn đã nhận</div>
+                          <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700 py-6 uppercase tracking-tight">
+                              {receivedReward}
+                          </div>
                        </div>
                        <button 
                          onClick={() => setRewardFor(null)}
-                         className="px-10 py-4 bg-slate-800 text-white rounded-full font-bold"
+                         className="px-16 py-5 bg-slate-900 text-white rounded-full font-black text-xl hover:bg-slate-800 transition-all shadow-2xl"
                        >
-                         XONG
+                         TUYỆT VỜI
                        </button>
                     </div>
                   )}
@@ -266,14 +342,13 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="mt-20">
               <button 
                 onClick={resetGame}
-                className="flex items-center gap-2 mx-auto px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full font-bold transition-all"
+                className="group flex items-center gap-3 mx-auto px-10 py-5 bg-white text-slate-700 rounded-3xl font-black text-lg transition-all border border-slate-200 shadow-sm hover:shadow-md hover:bg-slate-50"
               >
-                <Home className="w-5 h-5" /> Trở về Trang chủ
+                <Home className="w-6 h-6 group-hover:scale-110 transition-transform" /> TRỞ VỀ TRANG CHỦ
               </button>
-              <p className="text-slate-400 italic">Cảm ơn các bạn đã tham gia chơi "The Decoder"!</p>
             </div>
           </div>
         );
@@ -281,43 +356,46 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden selection:bg-blue-100">
-      <nav className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="bg-blue-600 w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-blue-200">D</div>
-          <span className="font-black text-xl tracking-tighter text-slate-800">THE DECODER</span>
+    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden selection:bg-blue-100 pb-20">
+      <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-5 flex justify-between items-center sticky top-0 z-40">
+        <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black shadow-xl shadow-blue-200 text-2xl">D</div>
+          <span className="font-black text-2xl tracking-tighter text-slate-800">THE DECODER</span>
         </div>
-        <div className="flex items-center gap-6">
-          <div className={`text-sm font-bold flex items-center gap-2 ${status === GameStatus.SETUP_CLASS ? 'text-blue-600' : 'text-slate-400'}`}>
-            <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">1</span>
-            Sơ đồ lớp
+        <div className="hidden md:flex items-center gap-10">
+          <div className={`text-sm font-black flex items-center gap-3 ${status === GameStatus.SETUP_CLASS ? 'text-blue-600' : 'text-slate-300'}`}>
+            <span className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-colors ${status === GameStatus.SETUP_CLASS ? 'border-blue-600' : 'border-slate-200'}`}>1</span>
+            SƠ ĐỒ LỚP
           </div>
-          <div className={`text-sm font-bold flex items-center gap-2 ${status === GameStatus.SETUP_GAMEPLAY ? 'text-blue-600' : 'text-slate-400'}`}>
-            <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">2</span>
-            Gameplay
+          <div className={`text-sm font-black flex items-center gap-3 ${status === GameStatus.SETUP_GAMEPLAY ? 'text-blue-600' : 'text-slate-300'}`}>
+            <span className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-colors ${status === GameStatus.SETUP_GAMEPLAY ? 'border-blue-600' : 'border-slate-200'}`}>2</span>
+            GAMEPLAY
           </div>
-          <div className={`text-sm font-bold flex items-center gap-2 ${status === GameStatus.PLAYING ? 'text-blue-600' : 'text-slate-400'}`}>
-            <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">3</span>
-            Trò chơi
+          <div className={`text-sm font-black flex items-center gap-3 ${status === GameStatus.PLAYING ? 'text-blue-600' : 'text-slate-300'}`}>
+            <span className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-colors ${status === GameStatus.PLAYING ? 'border-blue-600' : 'border-slate-200'}`}>3</span>
+            GIẢI MÃ
           </div>
         </div>
       </nav>
 
-      <main className="py-8">
+      <main>
         {renderContent()}
       </main>
 
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn { 
+          from { opacity: 0; transform: scale(0.8) translateY(20px); } 
+          to { opacity: 1; transform: scale(1) translateY(0); } 
         }
-        @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 1; transform: scale(1); }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-10px); }
+          75% { transform: translateX(10px); }
         }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
-        .animate-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-scaleIn { animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-shake { animation: shake 0.2s ease-in-out infinite; }
       `}</style>
     </div>
   );
